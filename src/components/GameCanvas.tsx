@@ -13,10 +13,28 @@ interface GameCanvasProps {
 export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, engineRef, isDev }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dragStart, setDragStart] = useState<Vector2D | null>(null);
-  const [currentDrag, setCurrentDrag] = useState<Vector2D | null>(null);
+  const [dragActive, setDragActive] = useState(false); // Only for UI/pointer state
+  const dragStartRef = useRef<Vector2D | null>(null);
+  const currentDragRef = useRef<Vector2D | null>(null);
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const starsRef = useRef<{x: number, y: number}[]>([]);
+
+  useEffect(() => {
+    // Pre-generate stars once
+    const stars = [];
+    const rng = (seed: number) => {
+        let s = seed * 12345.678;
+        return (Math.sin(s) * 10000) % 1;
+    };
+    for (let i = 0; i < 60; i++) {
+        stars.push({
+            x: Math.abs(rng(i)) * PHYSICS_WIDTH,
+            y: Math.abs(rng(i + 0.5)) * PHYSICS_HEIGHT
+        });
+    }
+    starsRef.current = stars;
+  }, []);
 
   const getCanvasCoords = (e: MouseEvent | TouchEvent): Vector2D => {
     if (!canvasRef.current) return { x: 0, y: 0 };
@@ -30,42 +48,59 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
     return { x, y };
   };
 
-  const draw = useCallback((ctx: CanvasRenderingContext2D, engine: GameEngine) => {
+  const draw = useCallback((ctx: CanvasRenderingContext2D, engine: GameEngine, time: number) => {
+    ctx.save();
+    
+    // Screen Shake Implementation
+    if (engine.collided) {
+      const shakeAmt = 8;
+      ctx.translate((Math.random() - 0.5) * shakeAmt, (Math.random() - 0.5) * shakeAmt);
+    }
+
     ctx.clearRect(0, 0, PHYSICS_WIDTH, PHYSICS_HEIGHT);
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, PHYSICS_WIDTH, PHYSICS_HEIGHT);
 
     // Draw Particles/Stars in background
     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    const rng = (seed: number) => Math.sin(seed) * 10000 % 1;
-    for (let i = 0; i < 50; i++) {
+    const stars = starsRef.current;
+    for (let i = 0; i < stars.length; i++) {
+       const star = stars[i];
        ctx.beginPath();
-       ctx.arc(Math.abs(rng(i) * PHYSICS_WIDTH), Math.abs(rng(i+1) * PHYSICS_HEIGHT), 1, 0, Math.PI * 2);
+       ctx.arc(star.x, star.y, 1, 0, Math.PI * 2);
        ctx.fill();
     }
 
     // Draw Objects
-    engine.levelData.objects.forEach(obj => {
-      ctx.beginPath();
+    const objects = engine.levelData.objects;
+    for (let i = 0; i < objects.length; i++) {
+      const obj = objects[i];
       
       if (obj.type === 'Planet') {
         const mass = obj.mass || 0;
-        let planetColor = '#2a2a2a'; // Default
-        let glowColor = 'rgba(0, 0, 0, 0.8)';
+        let planetColor = '#1a1a1a'; 
+        let glowColor = 'rgba(255, 255, 255, 0.05)';
         
-        if (mass > 2500) {
-            planetColor = '#4a1a1a'; // Supermassive (Red/Dark)
-            glowColor = 'rgba(255, 0, 0, 0.2)';
-        } else if (mass > 1500) {
-            planetColor = '#1a2a4a'; // Heavy (Blue)
-            glowColor = 'rgba(0, 100, 255, 0.2)';
-        } else if (mass > 500) {
-            planetColor = '#1a4a2a'; // Medium (Green)
-            glowColor = 'rgba(0, 255, 100, 0.1)';
-        } else {
-            planetColor = '#333'; // Light
-            glowColor = 'rgba(255, 255, 255, 0.05)';
+        if (mass > 4000) {
+            planetColor = '#3a0a0a'; 
+            glowColor = 'rgba(255, 50, 50, 0.1)';
+        } else if (mass > 2000) {
+            planetColor = '#0a1a3a'; 
+            glowColor = 'rgba(50, 100, 255, 0.1)';
         }
+
+        // Gravitational Lensing effect
+        ctx.save();
+        ctx.beginPath();
+        const lensRadius = obj.radius * 1.8;
+        const lensGrad = ctx.createRadialGradient(obj.pos.x, obj.pos.y, obj.radius, obj.pos.x, obj.pos.y, lensRadius);
+        lensGrad.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+        lensGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.02)');
+        lensGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = lensGrad;
+        ctx.arc(obj.pos.x, obj.pos.y, lensRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
 
         ctx.shadowBlur = 40;
         ctx.shadowColor = glowColor;
@@ -73,9 +108,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
         gradient.addColorStop(0, planetColor);
         gradient.addColorStop(1, '#000');
         ctx.fillStyle = gradient;
+        ctx.beginPath();
         ctx.arc(obj.pos.x, obj.pos.y, obj.radius, 0, Math.PI * 2);
         ctx.fill();
         
+        ctx.shadowBlur = 0;
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
         ctx.stroke();
@@ -88,106 +125,122 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
         ctx.arc(obj.pos.x, obj.pos.y, obj.radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-      } else if (obj.type === 'Sensor') {
-        const beamRange = 400;
-        const angle = obj.angle || 0;
-        const width = obj.beamWidth || 0;
-        
+      } else if (obj.type === 'Stardust' && !obj.collected) {
+        ctx.fillStyle = '#FFD700';
+        const pulse = 1 + Math.sin(time / 200 + obj.pos.x) * 0.5;
+        ctx.beginPath();
+        ctx.arc(obj.pos.x, obj.pos.y, obj.radius * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (obj.type === 'QuantumField') {
+        const qTime = time / 500;
         ctx.save();
         ctx.translate(obj.pos.x, obj.pos.y);
-        ctx.rotate(angle);
+        ctx.rotate(qTime);
         
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, beamRange);
-        gradient.addColorStop(0, 'rgba(255, 0, 0, 0.4)'); // Brighter lasers
-        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
-        ctx.fillStyle = gradient;
-        
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, beamRange, -width/2, width/2);
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.restore();
-
-        ctx.fillStyle = '#f00';
-        ctx.beginPath();
-        ctx.arc(obj.pos.x, obj.pos.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (obj.type === 'Portal') {
-        ctx.shadowBlur = 30;
-        ctx.shadowColor = '#00F0FF';
         ctx.strokeStyle = '#00F0FF';
         ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.setLineDash([5, 10]);
         ctx.beginPath();
-        ctx.arc(obj.pos.x, obj.pos.y, obj.radius, 0, Math.PI * 2);
+        for(let j=0; j<6; j++) {
+            const angle = (j / 6) * Math.PI * 2;
+            const x = Math.cos(angle) * (obj.radius * (0.8 + Math.sin(qTime * 5 + j) * 0.1));
+            const y = Math.sin(angle) * (obj.radius * (0.8 + Math.sin(qTime * 5 + j) * 0.1));
+            if (j === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
         ctx.stroke();
-        ctx.setLineDash([]);
         
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.1)';
+        ctx.fillStyle = 'rgba(0, 240, 150, 0.05)';
         ctx.fill();
-        
-        // Inner swirl
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
-        ctx.arc(obj.pos.x, obj.pos.y, obj.radius * 0.6, level * 0.1, level * 0.1 + Math.PI);
-        ctx.stroke();
-      } else if (obj.type === 'ColdSink') {
-        const time = performance.now() / 1000;
-        const pulse = Math.sin(time * 2) * 0.05 + 0.1;
-        ctx.strokeStyle = `rgba(0, 240, 255, ${pulse + 0.1})`;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.arc(obj.pos.x, obj.pos.y, obj.radius, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.restore();
         ctx.setLineDash([]);
+      } else if (obj.type === 'Portal') {
+        const portalTime = time / 1000;
+        ctx.save();
+        ctx.translate(obj.pos.x, obj.pos.y);
+        ctx.rotate(portalTime * -1.5); // Rebranded as Wormhole (Vortex)
+        
+        for(let j=0; j<5; j++) {
+          ctx.rotate(Math.PI * 2 / 5);
+          const gradient = ctx.createLinearGradient(0, 0, obj.radius, 0);
+          gradient.addColorStop(0, 'rgba(150, 0, 255, 0.8)'); // Purple wormhole
+          gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, obj.radius * (1 - j*0.15), 0, Math.PI);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (obj.type === 'Nebula') {
+        const nTime = time / 2000;
+        const pulse = Math.sin(nTime * 2) * 0.05 + 0.1;
         
         const gradient = ctx.createRadialGradient(obj.pos.x, obj.pos.y, 0, obj.pos.x, obj.pos.y, obj.radius);
-        gradient.addColorStop(0, `rgba(0, 240, 255, ${pulse})`);
-        gradient.addColorStop(1, 'rgba(0, 240, 255, 0)');
+        gradient.addColorStop(0, `rgba(255, 150, 0, ${pulse + 0.1})`);
+        gradient.addColorStop(0.6, `rgba(255, 50, 0, ${pulse * 0.5})`);
+        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
         ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(obj.pos.x, obj.pos.y, obj.radius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Ice crystals (dots)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        for (let i = 0; i < 8; i++) {
-            const angle = (time + i) % (Math.PI * 2);
-            const r = (obj.radius * 0.8) * Math.abs(Math.sin(time + i));
+        // Gaseous particles
+        ctx.fillStyle = 'rgba(255, 200, 100, 0.3)';
+        for (let k = 0; k < 15; k++) {
+            const angle = (nTime * 0.3 + k * (Math.PI / 7.5)) % (Math.PI * 2);
+            const r = (obj.radius * 0.7) * (1 + 0.2 * Math.sin(nTime + k));
             ctx.beginPath();
-            ctx.arc(obj.pos.x + Math.cos(angle) * r, obj.pos.y + Math.sin(angle) * r, 1, 0, Math.PI * 2);
+            ctx.arc(obj.pos.x + Math.cos(angle) * r, obj.pos.y + Math.sin(angle) * r, 2, 0, Math.PI * 2);
             ctx.fill();
         }
       }
-    });
+    }
 
-    // Draw Goal
+    // Draw Goal (Enhanced Target)
     const goal = engine.levelData.goalPos;
-    ctx.shadowBlur = 40;
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.2)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.setLineDash([4, 4]);
+    const goalCollected = engine.gameState.goalCollected;
+    ctx.save();
+    ctx.translate(goal.x, goal.y);
+    const rotation = time / 800;
+    
+    // Outer rotating structure
+    ctx.strokeStyle = goalCollected ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 215, 0, 0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(goal.x, goal.y, 30, 0, Math.PI * 2);
+    for(let m=0; m<4; m++) {
+        ctx.rotate(Math.PI / 2);
+        ctx.moveTo(35, 0);
+        ctx.lineTo(35, 15);
+        ctx.lineTo(20, 35);
+    }
     ctx.stroke();
-    ctx.setLineDash([]);
 
-    ctx.fillStyle = '#fff';
+    // Inner pulsing core
+    ctx.rotate(rotation);
+    ctx.fillStyle = goalCollected ? '#333' : '#fff';
+    ctx.shadowBlur = goalCollected ? 0 : 15;
+    ctx.shadowColor = '#FFD700';
     ctx.beginPath();
-    ctx.arc(goal.x, goal.y, 4, 0, Math.PI * 2);
+    ctx.rect(-10, -10, 20, 20);
     ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
 
-    // Draw Trajectory if dragging
-    if (dragStart && currentDrag && !engine.probe.launched) {
+    // Trajectory Visualization
+    const dStart = dragStartRef.current;
+    const cDrag = currentDragRef.current;
+
+    if (dStart && cDrag && !engine.probe.launched) {
       const launchVelocity = {
-        x: (dragStart.x - currentDrag.x) * 0.08,
-        y: (dragStart.y - currentDrag.y) * 0.08
+        x: (dStart.x - cDrag.x) * 0.04,
+        y: (dStart.y - cDrag.y) * 0.04
       };
       
       // Calculate pull vector for visual "rubber band"
-      const pullX = (currentDrag.x - dragStart.x);
-      const pullY = (currentDrag.y - dragStart.y);
+      const pullX = (cDrag.x - dStart.x);
+      const pullY = (cDrag.y - dStart.y);
       
       // Draw "Rubber Band"
       ctx.beginPath();
@@ -207,8 +260,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
       const trajectory = engine.getTrajectory(launchVelocity, 200);
       
       // Animated Trajectory (Moving Dots)
-      const time = performance.now() / 1000;
-      const dashOffset = (-time * 100) % 36;
+      const dashOffset = (-time / 10) % 36;
       
       ctx.save();
       ctx.beginPath();
@@ -216,12 +268,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
       ctx.setLineDash([2, 10]);
       ctx.lineDashOffset = dashOffset;
       ctx.lineWidth = 3;
-      trajectory.forEach((p, i) => {
-        if (i % 2 === 0) { // Only draw every other point for spacing
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
+      for (let pIdx = 0; pIdx < trajectory.length; pIdx++) {
+        const pt = trajectory[pIdx];
+        if (pIdx % 2 === 0) {
+            if (pIdx === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
         }
-      });
+      }
       ctx.stroke();
       ctx.restore();
       
@@ -242,27 +295,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.2)';
         ctx.setLineDash([5, 5]);
         ctx.lineWidth = 1;
-        engine.levelData.solvedTrajectory.forEach((p, i) => {
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-        });
+        const solved = engine.levelData.solvedTrajectory;
+        for (let sIdx = 0; sIdx < solved.length; sIdx++) {
+            const pt = solved[sIdx];
+            if (sIdx === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+        }
         ctx.stroke();
         ctx.restore();
     }
 
     // Draw Probe
     const probe = engine.probe;
-    const probeColor = probe.isWaveState ? '#FF00FF' : '#00F0FF';
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = probeColor;
-    ctx.fillStyle = probeColor;
+    const heatFactor = engine.gameState.heat / 100;
+    
+    // Base color or heat color
+    const baseColor = probe.isWaveState ? [255, 0, 255] : [0, 240, 255];
+    const heatColor = [255, 50, 0];
+    
+    const rPart = Math.floor(baseColor[0] + (heatColor[0] - baseColor[0]) * heatFactor);
+    const gPart = Math.floor(baseColor[1] + (heatColor[1] - baseColor[1]) * heatFactor);
+    const bPart = Math.floor(baseColor[2] + (heatColor[2] - baseColor[2]) * heatFactor);
+    const probeColorString = `rgb(${rPart},${gPart},${bPart})`;
+
+    ctx.shadowBlur = 20 + heatFactor * 30;
+    ctx.shadowColor = probeColorString;
+    ctx.fillStyle = probeColorString;
     ctx.beginPath();
     ctx.arc(probe.pos.x, probe.pos.y, probe.radius, 0, Math.PI * 2);
     ctx.fill();
     
     if (probe.isWaveState) {
         ctx.globalAlpha = 0.2;
-        ctx.fillStyle = '#FF00FF';
+        ctx.fillStyle = probeColorString;
         ctx.beginPath();
         ctx.arc(probe.pos.x, probe.pos.y, probe.radius * 2.5, 0, Math.PI * 2);
         ctx.fill();
@@ -270,7 +335,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
     }
 
     ctx.shadowBlur = 0;
-  }, [dragStart, currentDrag, level]);
+    ctx.restore();
+  }, [level]); // Stable, only rebuild if level (bg stars/objects) changes substantially
 
   const animate = useCallback((time: number) => {
     if (!lastTimeRef.current) lastTimeRef.current = time;
@@ -280,7 +346,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
     if (engineRef.current) {
         engineRef.current.update(dt);
         const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) draw(ctx, engineRef.current);
+        if (ctx) draw(ctx, engineRef.current, time);
 
         if (engineRef.current.gameState.status === 'won') {
             onWin();
@@ -300,26 +366,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ level, onWin, onLoss, en
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (engineRef.current?.probe.launched) return;
     const pos = getCanvasCoords(e.nativeEvent);
-    // Only start drag if near probe? No, prompt says "Dragging anywhere on the screen creates a vector from the Probe's start position."
-    setDragStart(pos);
-    setCurrentDrag(pos);
+    dragStartRef.current = pos;
+    currentDragRef.current = pos;
+    setDragActive(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!dragStart) return;
+    if (!dragStartRef.current) return;
     const pos = getCanvasCoords(e.nativeEvent);
-    setCurrentDrag(pos);
+    currentDragRef.current = pos;
   };
 
   const handleMouseUp = () => {
-    if (!dragStart || !currentDrag) return;
+    if (!dragStartRef.current || !currentDragRef.current) return;
+    const dStart = dragStartRef.current;
+    const cDrag = currentDragRef.current;
     const launchVelocity = {
-      x: (dragStart.x - currentDrag.x) * 0.08,
-      y: (dragStart.y - currentDrag.y) * 0.08
+      x: (dStart.x - cDrag.x) * 0.04,
+      y: (dStart.y - cDrag.y) * 0.04
     };
     engineRef.current?.launch(launchVelocity);
-    setDragStart(null);
-    setCurrentDrag(null);
+    dragStartRef.current = null;
+    currentDragRef.current = null;
+    setDragActive(false);
   };
 
   return (

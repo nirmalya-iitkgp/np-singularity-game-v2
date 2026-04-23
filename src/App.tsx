@@ -19,6 +19,11 @@ export default function App() {
     status: 'preview',
     score: 0,
     timeScale: 1.0,
+    stardust: 0,
+    requiredStardust: 20,
+    optimumScore: 0,
+    switchCooldown: 0,
+    goalCollected: false,
   });
   const [isWaveState, setIsWaveState] = useState(false);
 
@@ -46,8 +51,10 @@ export default function App() {
 
   const handleReset = useCallback(() => {
     engineRef.current?.reset();
-    setGameState(engineRef.current?.gameState || gameState);
-  }, [gameState]);
+    if (engineRef.current) {
+      setGameState({ ...engineRef.current.gameState });
+    }
+  }, []); // No dependency on gameState
 
   const handleNextLevel = useCallback(() => {
     if (level < 40) {

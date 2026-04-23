@@ -55,23 +55,23 @@ export const MenuOverlay: React.FC<MenuOverlayProps> = ({ onStart }) => {
 
         {/* Grid Info Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl">
-          {/* Field Theory: States */}
+          {/* Mission: Harvest */}
           <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[32px] backdrop-blur-md space-y-6">
             <div className="flex items-center gap-3">
               <Activity className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Field Theory: Wave-Particle Duality</h2>
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Mission: Stardust Harvest</h2>
             </div>
             <p className="text-[11px] text-[#777] font-medium italic leading-relaxed">
-              "The observer must toggle the probe's localized state to bypass structural decoherence."
+              "Extract high-density cosmic signatures from gravity wells. Exiting the sector via border impact will finalize the transfer—if the quota is met."
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <div className="text-[9px] font-bold text-cyan-400 uppercase">Mass-Bound</div>
-                <div className="text-[8px] text-[#555] uppercase leading-tight">Interaction with all Newtonian matter.</div>
+                <div className="text-[9px] font-bold text-[#FFD700] uppercase">Planetary 2x Bounce</div>
+                <div className="text-[8px] text-[#555] uppercase leading-tight">Collide with planets to reflect at double speed.</div>
               </div>
               <div className="space-y-1">
-                <div className="text-[9px] font-bold text-fuchsia-400 uppercase">Wave-Phase</div>
-                <div className="text-[8px] text-[#555] uppercase leading-tight">Tunneling through Asteroid matrices.</div>
+                <div className="text-[9px] font-bold text-fuchsia-400 uppercase">20s Margin Switch</div>
+                <div className="text-[8px] text-[#555] uppercase leading-tight">Match Mirror-Wave or Spring-Particle to exit.</div>
               </div>
             </div>
           </div>
@@ -80,14 +80,14 @@ export const MenuOverlay: React.FC<MenuOverlayProps> = ({ onStart }) => {
           <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[32px] backdrop-blur-md space-y-6">
             <div className="flex items-center gap-3">
               <Box className="w-4 h-4 text-orange-400" />
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Phenomenological Catalog</h2>
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Temporal Perks</h2>
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               {[
-                { name: 'Wells', desc: 'Gravitational Curvature', icon: <Zap className="w-3 h-3 text-red-500" /> },
-                { name: 'Sensors', desc: 'Detects Particle state', icon: <Eye className="w-3 h-3 text-red-600" /> },
-                { name: 'Tunnels', desc: 'Non-Local Teleportation', icon: <RefreshCw className="w-3 h-3 text-cyan-400" /> },
-                { name: 'Heat', desc: 'Entropy Accumulation', icon: <Thermometer className="w-3 h-3 text-blue-400" /> },
+                { name: 'Quantum', desc: 'Yield-chance in Wave-Phase', icon: <Zap className="w-3 h-3 text-cyan-500" /> },
+                { name: 'Relativity', desc: 'High-speed bonus yield', icon: <Activity className="w-3 h-3 text-fuchsia-600" /> },
+                { name: 'Thermal', desc: 'Solar Flare harvesting', icon: <Activity className="w-3 h-3 text-orange-400" /> },
+                { name: 'Classical', desc: 'Newtonian radius boost', icon: <Layout className="w-3 h-3 text-green-400" /> },
               ].map((item, i) => (
                 <div key={i} className="flex gap-3">
                   <div className="mt-[2px]">{item.icon}</div>
